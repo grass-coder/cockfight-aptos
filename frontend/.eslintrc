@@ -1,0 +1,4 @@
+{
+  "extends": ["@initia/react-app"],
+  "ignorePatterns": ["*.stories.tsx"]
+}
