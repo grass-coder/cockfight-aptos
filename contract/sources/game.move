@@ -3,12 +3,19 @@ module cockfight::game {
     use aptos_framework::object;
     use aptos_framework::object::ExtendRef;
     use aptos_framework::randomness;
+    use aptos_framework::aptos_coin::AptosCoin;
+    use aptos_framework::coin;
+
     use aptos_std::string_utils::{to_string};
+    use aptos_std::table;
     use aptos_token_objects::collection;
     use aptos_token_objects::token;
+
     use std::option;
+    use std::vector;
     use std::signer::address_of;
     use std::string::{String, utf8};
+
 
     /// Cockie not exist at given address
     const ECOCKIE_NOT_EXIST: u64 = 1;
@@ -20,12 +27,20 @@ module cockfight::game {
     const EALREADY_COMMITTED: u64 = 4;
     /// Already revealed random value, please commit again for next move
     const EALREADY_REVEALED: u64 = 5;
+    const EUNAUTHORIZED: u64 = 6;
+    const EINVALID_STAGE: u64 = 7;
+    const ENOT_SUFFICIENT_EGGS: u64 = 8;
+    const EINVALID_TICKET: u64 = 9;
+    const EINSUFFICIENT_BALANCE: u64 = 10;
 
     const APP_OBJECT_SEED: vector<u8> = b"COCKIE";
     const COCKIE_COLLECTION_NAME: vector<u8> = b"Cockie Collection";
     const COCKIE_COLLECTION_DESCRIPTION: vector<u8> = b"Cockie Collection Description";
-    const COCKIE_COLLECTION_URI: vector<u8> = b"https://otjbxblyfunmfblzdegw.supabase.co/storage/v1/object/public/cockie/aptocockie.png";
-    const COCKIE_DEFAULT_VALUE: u64 = 1_000_000; // 1_000_000 oct = 1 Aptocockie
+    const COCKIE_COLLECTION_URI: vector<u8> = b"https://raw.githubusercontent.com/grass-coder/cockfight-aptos/refs/heads/main/frontend/src/images/cockie/cockie1.png";
+    
+    const DEFAULT_COCKIE_PRICE: u64 = 100_000; // 100_000 oct = 1 Aptocockie
+    const DEFAULT_BETTING_RANGE: u64 = 4;
+    const DEFAULT_FUNDING_EGGS_PER_COCKIE: u64 = 5;
 
     // Body value range is [0, 5)
     const BODY_MAX_VALUE_EXCL: u8 = 5;
@@ -33,12 +48,20 @@ module cockfight::game {
     const EAR_MAX_VALUE_EXCL: u8 = 6;
     // Face value range is [0, 4)
     const FACE_MAX_VALUE_EXCL: u8 = 4;
-    // default health of Cockie at creation
-    const DEFAULT_BEGINNING_HEALTH: u8 = 5;
+
+    struct ModuleStore has key {
+        stage: u64,
+        users: vector<address>,
+        cockie_owner: table::Table<address, CockieOwnerInfo>,
+    }
+
+    struct CockieOwnerInfo has store {
+        eggs: u64,
+        cockie_addresses: vector<address>,
+    }
 
     struct Cockie has key {
         live: bool,
-        health: u8,
         extend_ref: ExtendRef,
         mutator_ref: token::MutatorRef,
         burn_ref: token::BurnRef,
@@ -74,6 +97,12 @@ module cockfight::game {
         });
 
         create_cockie_collection(app_signer);
+        
+        move_to(account, ModuleStore {
+            stage: 0,
+            users: vector[],
+            cockie_owner: table::new<address, CockieOwnerInfo>()
+        })
     }
 
     fun get_collection_address(): address {
@@ -108,14 +137,26 @@ module cockfight::game {
     // This ensures user can only call it from a transaction instead of another contract.
     // This prevents users seeing the result of mint and act on it, e.g. see the result and abort the tx if they don't like it.
     #[randomness]
-    entry fun create_cockie(user: &signer) acquires CollectionCapability {
+    entry fun create_cockie(user: &signer) acquires CollectionCapability, ModuleStore {
         create_cockie_internal(user);
     }
 
-    fun create_cockie_internal(user: &signer): address acquires CollectionCapability {
-        // let body = randomness::u8_range(0, BODY_MAX_VALUE_EXCL);
-        // let ear = randomness::u8_range(0, EAR_MAX_VALUE_EXCL);
-        // let face = randomness::u8_range(0, FACE_MAX_VALUE_EXCL);
+    entry fun fund_eggs(deployer: &signer, stage: u64) acquires ModuleStore {
+        assert!(address_of(deployer) == @cockfight, EUNAUTHORIZED);
+        let module_store = borrow_global_mut<ModuleStore>(@cockfight);
+        
+        assert!(module_store.stage + 1 == stage, EINVALID_STAGE);
+        module_store.stage = stage;
+        
+        vector::for_each(module_store.users, |user| {
+            let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user);
+            cockie_owner_info.eggs = cockie_owner_info.eggs + DEFAULT_FUNDING_EGGS_PER_COCKIE * vector::length(&cockie_owner_info.cockie_addresses);
+        })
+    }
+
+    fun create_cockie_internal(user: &signer): address acquires CollectionCapability, ModuleStore {
+        assert!(coin::balance<AptosCoin>(address_of(user)) >= DEFAULT_COCKIE_PRICE, EINSUFFICIENT_BALANCE);
+        coin::transfer<AptosCoin>(user, @cockfight, DEFAULT_COCKIE_PRICE);
 
         let uri = utf8(COCKIE_COLLECTION_URI);
         let description = utf8(COCKIE_COLLECTION_DESCRIPTION);
@@ -143,13 +184,24 @@ module cockfight::game {
         // Initialize and set default Cockie struct values
         let cockie = Cockie {
             live: true,
-            health: DEFAULT_BEGINNING_HEALTH,
             extend_ref,
             mutator_ref,
             burn_ref,
         };
         move_to(token_signer_ref, cockie);
 
+        let module_store = borrow_global_mut<ModuleStore>(@cockfight);
+        if (table::contains(&module_store.cockie_owner, user_address)) {
+            let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
+            vector::push_back(&mut cockie_owner_info.cockie_addresses, cockie_address);
+        } else {
+            table::add(&mut module_store.cockie_owner, user_address, CockieOwnerInfo {
+                eggs: 0,
+                cockie_addresses: vector[cockie_address],
+            });
+            vector::push_back(&mut module_store.users, user_address);
+        };
+        
         // Emit event for minting Cockie token
         event::emit<MintCockieEvent>(
             MintCockieEvent {
@@ -164,13 +216,9 @@ module cockfight::game {
         cockie_address
     }
 
-    // Throw error if Cockie does not exist or is dead
-    fun check_cockie_exist_and_live(cockie_address: address) acquires Cockie {
-        let exist_cockie = exists<Cockie>(cockie_address);
-        assert!(exist_cockie, ECOCKIE_NOT_EXIST);
-
-        let cockie_ref = borrow_global<Cockie>(cockie_address);
-        assert!(cockie_ref.live, EDEAD_COCKIE_CANNOT_MOVE)
+    fun check_cockie_exist(user: address) acquires ModuleStore {
+        let module_store = borrow_global<ModuleStore>(@cockfight);
+        assert!(table::contains(&module_store.cockie_owner, user), ECOCKIE_NOT_EXIST);
     }
 
     // Throw error if RandomnessCommitmentExt does not exist or is not committed
@@ -183,85 +231,40 @@ module cockfight::game {
         assert!(!random_commitment_ext.revealed, EALREADY_REVEALED)
     }
 
-    // Make a random move for the Aptocockie.
-    // Depending on the random value, the Cockie's health will increase or decrease.
-    // We prevent undergasing attack by making sure the gas cost of both paths are equal or reward path is higher.
-    // This function is only called from a transaction to prevent test and abort attack.
     #[randomness]
-    entry fun make_random_move(
-        cockie_address: address,
-    ) acquires Cockie {
-        check_cockie_exist_and_live(cockie_address);
-        let cockie = borrow_global_mut<Cockie>(cockie_address);
-        let random_value = randomness::u8_range(0, 2);
+    entry fun make_random_betting(
+        user: &signer,
+        ticket: u64
+    ) acquires ModuleStore {        
+        let user_address = address_of(user);
+        check_cockie_exist(user_address);
+
+        let module_store = borrow_global_mut<ModuleStore>(@cockfight);
+        let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
+        assert!(cockie_owner_info.eggs >= ticket, ENOT_SUFFICIENT_EGGS);
+        assert!(ticket > 0, EINVALID_TICKET);
+        cockie_owner_info.eggs = cockie_owner_info.eggs - ticket;
+
+        let random_value = randomness::u64_range(0, DEFAULT_BETTING_RANGE);
         if (random_value == 0) {
-            // Reward path
-            cockie.health = cockie.health + 1;
-            // Always run to make sure reward path gas cost is always higher or equal to punishment path
-            if (cockie.health > 0) {
-                cockie.live = true;
-            }
-        } else {
-            // Punishment path
-            cockie.health = cockie.health - 1;
-            // Conditionally run, so punishment path gas cost is always lower or equal to reward path
-            if (cockie.health == 0) {
-                cockie.live = false;
-            }
-        };
-    }
-
-    // This prevents undergasing attack by committing it first.
-    // This function is only called from a transaction to prevent test and abort attack.
-    #[randomness]
-    entry fun make_random_move_commit(cockie_address: address) acquires Cockie, RandomnessCommitmentExt {
-        check_cockie_exist_and_live(cockie_address);
-        let exist_randomness_commitment_ext = exists<RandomnessCommitmentExt>(cockie_address);
-        if (exist_randomness_commitment_ext) {
-            let random_commitment_ext = borrow_global_mut<RandomnessCommitmentExt>(cockie_address);
-            // Randomness should already be revealed now so it can be committed again
-            // Throw error if it's already committed but not revealed
-            assert!(random_commitment_ext.revealed, EALREADY_COMMITTED);
-            let random_value = randomness::u8_range(0, 2);
-            // Commit a new random value now, flip the revealed flag to false
-            random_commitment_ext.revealed = false;
-            random_commitment_ext.value = random_value;
-        } else {
-            let random_value = randomness::u8_range(0, 2);
-            let cockie_signer_ref = &get_cockie_signer(cockie_address);
-            move_to(cockie_signer_ref, RandomnessCommitmentExt {
-                revealed: false,
-                value: random_value,
-            });
+            cockie_owner_info.eggs = cockie_owner_info.eggs + ticket * DEFAULT_BETTING_RANGE;
         }
-    }
-
-    // Used together with make_random_move_commit to reveal the random value.
-    // If user doesn't reveal cause it doesn't like the result, it cannot enter the next round of game
-    // In our case user cannot make another move without revealing the previous move
-    // This function is only called from a transaction to prevent test and abort attack.
-    entry fun make_random_move_reveal(
-        cockie_address: address,
-    ) acquires Cockie, RandomnessCommitmentExt {
-        check_cockie_exist_and_live(cockie_address);
-        let cockie = borrow_global_mut<Cockie>(cockie_address);
-        check_randomness_commitment_exist_and_not_revealed(cockie_address);
-        let random_commitment_ext = borrow_global_mut<RandomnessCommitmentExt>(cockie_address);
-        if (random_commitment_ext.value == 0) {
-            cockie.health = cockie.health + 1;
-        } else {
-            cockie.health = cockie.health - 1;
-            if (cockie.health == 0) {
-                cockie.live = false;
-            }
-        };
-        random_commitment_ext.revealed = true;
     }
 
     // Get collection name of cockie collection
     #[view]
     public fun get_cockie_collection_name(): (String) {
         utf8(COCKIE_COLLECTION_NAME)
+    }
+
+    #[view]
+    public fun get_cockie_owner_info(user: address): (u64, vector<address>) acquires ModuleStore {
+        let module_store = borrow_global<ModuleStore>(@cockfight);
+        if (!table::contains(&module_store.cockie_owner, user)) {
+            return (0, vector::empty<address>())
+        };
+        let cockie_owner_info = table::borrow(&module_store.cockie_owner, user);
+        (cockie_owner_info.eggs, cockie_owner_info.cockie_addresses)
     }
 
     // Get creator address of cockie collection
@@ -280,10 +283,12 @@ module cockfight::game {
 
     // Returns all fields for this Cockie (if found)
     #[view]
-    public fun get_cockie(cockie_address: address): (bool, u8) acquires Cockie {
+    public fun get_cockie(cockie_address: address): (bool) acquires Cockie {
         let cockie = borrow_global<Cockie>(cockie_address);
-        (cockie.live, cockie.health)
+        (cockie.live)
     }
+
+
 
     // ==== TESTS ====
     // Setup testing environment
@@ -291,6 +296,11 @@ module cockfight::game {
     use aptos_framework::account::create_account_for_test;
     #[test_only]
     use aptos_std::crypto_algebra::enable_cryptography_algebra_natives;
+    #[test_only]
+    use aptos_framework::aptos_coin::mint_apt_fa_for_test;
+    #[test_only]
+    use aptos_framework::primary_fungible_store;
+
 
     #[test_only]
     fun setup_test(
@@ -306,6 +316,11 @@ module cockfight::game {
         create_account_for_test(address_of(creator));
         create_account_for_test(address_of(account));
 
+        primary_fungible_store::deposit(address_of(creator), mint_apt_fa_for_test(DEFAULT_COCKIE_PRICE));
+        primary_fungible_store::deposit(address_of(account), mint_apt_fa_for_test(DEFAULT_COCKIE_PRICE));
+        coin::register<AptosCoin>(account);
+        coin::register<AptosCoin>(creator);
+
         init_module(account)
     }
 
@@ -318,12 +333,18 @@ module cockfight::game {
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires CollectionCapability, Cockie {
+    ) acquires CollectionCapability, Cockie, ModuleStore {
         setup_test(fx, account, creator);
         let cockie_address = create_cockie_internal(creator);
-        let (live, health) = get_cockie(cockie_address);
+        let (live) = get_cockie(cockie_address);
         assert!(live, 1);
-        assert!(health == DEFAULT_BEGINNING_HEALTH, 2)
+        let (eggs, cockie_addresses) = get_cockie_owner_info(address_of(creator));
+        assert!(eggs == 0, 1);
+        assert!(vector::length(&cockie_addresses) == 1, 1);
+
+        let (eggs, cockie_addresses) = get_cockie_owner_info(address_of(account));
+        assert!(eggs == 0, 1);
+        assert!(vector::length(&cockie_addresses) == 0, 1);
     }
 
     #[test(
@@ -331,19 +352,32 @@ module cockfight::game {
         account = @cockfight,
         creator = @0x123
     )]
-    fun test_move_happy_path(
+    fun T_make_random_betting(
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires Cockie, CollectionCapability {
+    ) acquires CollectionCapability, ModuleStore {
         setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        let (live, health) = get_cockie(cockie_address);
-        assert!(live, 1);
-        assert!(health == DEFAULT_BEGINNING_HEALTH - 3, 2)
+        
+        create_cockie_internal(creator);
+        fund_eggs(account, 1);
+        make_random_betting(creator, 1);
+    }
+
+    #[test(
+        fx = @aptos_framework,
+        account = @cockfight,
+        creator = @0x123
+    )]
+    #[expected_failure(abort_code = EINSUFFICIENT_BALANCE, location = cockfight::game)]
+    fun test_cannot_create_cockie_not_sufficient_balance(
+        fx: &signer,
+        account: &signer,
+        creator: &signer
+    ) acquires CollectionCapability, ModuleStore {
+        setup_test(fx, account, creator);
+        create_cockie_internal(creator);
+        create_cockie_internal(creator);
     }
 
     #[test(
@@ -352,14 +386,13 @@ module cockfight::game {
         creator = @0x123
     )]
     #[expected_failure(abort_code = ECOCKIE_NOT_EXIST, location = cockfight::game)]
-    fun test_cannot_move_when_cockie_not_exist(
+    fun test_cannot_make_random_betting_when_no_cockie(
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires Cockie {
+    ) acquires ModuleStore {
         setup_test(fx, account, creator);
-        let creator_address = address_of(creator);
-        make_random_move(creator_address)
+        make_random_betting(creator, 0)
     }
 
     #[test(
@@ -367,94 +400,13 @@ module cockfight::game {
         account = @cockfight,
         creator = @0x123
     )]
-    #[expected_failure(abort_code = EDEAD_COCKIE_CANNOT_MOVE, location = cockfight::game)]
-    fun test_cannot_move_dead_cockie(
+    #[expected_failure(abort_code = EINVALID_STAGE, location = cockfight::game)]
+    fun test_cannot_fund_eggs_invalid_stage(
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires Cockie, CollectionCapability {
+    ) acquires ModuleStore {
         setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        // Initial health is 5, so we make 5 random moves to decrease health to 0 and kill the Cockie
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        make_random_move(cockie_address);
-        // Cockie is dead now, so it throws dead cockie cannot move error
-        make_random_move(cockie_address)
-    }
-
-    #[test(
-        fx = @aptos_framework,
-        account = @cockfight,
-        creator = @0x123
-    )]
-    #[expected_failure(abort_code = EALREADY_COMMITTED, location = cockfight::game)]
-    fun test_cannot_commit_randomness_twice(
-        fx: &signer,
-        account: &signer,
-        creator: &signer
-    ) acquires Cockie, CollectionCapability, RandomnessCommitmentExt {
-        setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        make_random_move_commit(cockie_address);
-        make_random_move_commit(cockie_address)
-    }
-
-    #[test(
-        fx = @aptos_framework,
-        account = @cockfight,
-        creator = @0x123
-    )]
-    #[expected_failure(abort_code = ERANDOMNESS_COMMITMENT_NOT_EXIST, location = cockfight::game)]
-    fun test_cannot_reveal_without_commit_first(
-        fx: &signer,
-        account: &signer,
-        creator: &signer
-    ) acquires Cockie, CollectionCapability, RandomnessCommitmentExt {
-        setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        make_random_move_reveal(cockie_address)
-    }
-
-    #[test(
-        fx = @aptos_framework,
-        account = @cockfight,
-        creator = @0x123
-    )]
-    #[expected_failure(abort_code = EALREADY_REVEALED, location = cockfight::game)]
-    fun test_cannot_reveal_twice(
-        fx: &signer,
-        account: &signer,
-        creator: &signer
-    ) acquires Cockie, CollectionCapability, RandomnessCommitmentExt {
-        setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        make_random_move_commit(cockie_address);
-        make_random_move_reveal(cockie_address);
-        // Reveal twice should throw error cause it's already revealed
-        make_random_move_reveal(cockie_address)
-    }
-
-    #[test(
-        fx = @aptos_framework,
-        account = @cockfight,
-        creator = @0x123
-    )]
-    fun test_commit_and_reveal_move_happy_path(
-        fx: &signer,
-        account: &signer,
-        creator: &signer
-    ) acquires Cockie, CollectionCapability, RandomnessCommitmentExt {
-        setup_test(fx, account, creator);
-        let cockie_address = create_cockie_internal(creator);
-        make_random_move_commit(cockie_address);
-        make_random_move_reveal(cockie_address);
-        make_random_move_commit(cockie_address);
-        make_random_move_reveal(cockie_address);
-        let (live, health) = get_cockie(cockie_address);
-        assert!(live, 1);
-        assert!(health == DEFAULT_BEGINNING_HEALTH - 2, 2)
+        fund_eggs(account, 0);
     }
 }

@@ -2,9 +2,11 @@ module cockfight::vault {
     use std::signer::address_of;
     use aptos_std::coin::{Self, Coin};
 
+    friend cockfight::game;
+
     /// When signer is not owner of module
     const E_NOT_AUTHORIZED: u64 = 1;
-
+    
     /// Struct to hold the coins needed by each module
     /// @Type Parameters
     /// VaultT: vault type ex) CollateralVault
