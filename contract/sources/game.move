@@ -4,7 +4,7 @@ module cockfight::game {
     use aptos_framework::object::ExtendRef;
     use aptos_framework::randomness;
     use aptos_framework::aptos_coin::AptosCoin;
-    use aptos_framework::coin;
+    use aptos_framework::coin::{Self, Coin};
 
     use aptos_std::string_utils::{to_string};
     use aptos_std::table;
@@ -30,7 +30,7 @@ module cockfight::game {
     const EUNAUTHORIZED: u64 = 6;
     const EINVALID_STAGE: u64 = 7;
     const ENOT_SUFFICIENT_EGGS: u64 = 8;
-    const EINVALID_TICKET: u64 = 9;
+    const EINVALID_ARGUMENT: u64 = 9;
     const EINSUFFICIENT_BALANCE: u64 = 10;
 
     const APP_OBJECT_SEED: vector<u8> = b"COCKIE";
@@ -38,7 +38,8 @@ module cockfight::game {
     const COCKIE_COLLECTION_DESCRIPTION: vector<u8> = b"Cockie Collection Description";
     const COCKIE_COLLECTION_URI: vector<u8> = b"https://raw.githubusercontent.com/grass-coder/cockfight-aptos/refs/heads/main/frontend/src/images/cockie/cockie1.png";
     
-    const DEFAULT_COCKIE_PRICE: u64 = 100_000; // 100_000 oct = 1 Aptocockie
+    const DEFAULT_COCKIE_PRICE: u64 = 100_000; // 100_000 oct = 1 cockie
+    const DEFAULT_EGG_PRICE: u64 = 100; // 100 oct = 1 egg
     const DEFAULT_BETTING_RANGE: u64 = 4;
     const DEFAULT_FUNDING_EGGS_PER_COCKIE: u64 = 5;
 
@@ -51,12 +52,15 @@ module cockfight::game {
 
     struct ModuleStore has key {
         stage: u64,
+        game_id: u64,
+        game_results: table::Table<u64, bool>,
         users: vector<address>,
         cockie_owner: table::Table<address, CockieOwnerInfo>,
     }
 
     struct CockieOwnerInfo has store {
         eggs: u64,
+        last_game_id: u64,
         cockie_addresses: vector<address>,
     }
 
@@ -83,6 +87,39 @@ module cockfight::game {
         extend_ref: ExtendRef,
     }
 
+    struct Vault has key {
+        coin_store: coin::Coin<AptosCoin>,
+    }
+
+    // Vault functions
+    public fun register_vault(_host: &signer) {
+        let host_addr = address_of(_host);
+        if (!exists<Vault>(host_addr)) {
+            move_to(_host, Vault {
+                coin_store: coin::zero<AptosCoin>()
+            })
+        };
+    }
+
+    fun deposit_vault(_coin: Coin<AptosCoin>) acquires Vault {
+        let vault = borrow_global_mut<Vault>(@cockfight);
+        coin::merge(&mut vault.coin_store, _coin);
+    }
+
+    fun withdraw_vault(_amount: u64): Coin<AptosCoin> acquires Vault {
+        if (_amount == 0) {
+            return coin::zero<AptosCoin>()
+        };
+        let vault = borrow_global_mut<Vault>(@cockfight);
+        coin::extract(&mut vault.coin_store, _amount)
+    }
+
+    fun vault_balance(): u64 acquires Vault {
+        let vault = borrow_global_mut<Vault>(@cockfight);
+        coin::value(&vault.coin_store)
+    }
+
+
     // This function is only called once when the module is published for the first time.
     fun init_module(account: &signer) {
         let constructor_ref = object::create_named_object(
@@ -91,7 +128,9 @@ module cockfight::game {
         );
         let extend_ref = object::generate_extend_ref(&constructor_ref);
         let app_signer = &object::generate_signer(&constructor_ref);
-
+        
+        register_vault(account);
+        
         move_to(app_signer, CollectionCapability {
             extend_ref,
         });
@@ -100,6 +139,8 @@ module cockfight::game {
         
         move_to(account, ModuleStore {
             stage: 0,
+            game_id: 1, 
+            game_results: table::new<u64, bool>(),
             users: vector[],
             cockie_owner: table::new<address, CockieOwnerInfo>()
         })
@@ -137,8 +178,40 @@ module cockfight::game {
     // This ensures user can only call it from a transaction instead of another contract.
     // This prevents users seeing the result of mint and act on it, e.g. see the result and abort the tx if they don't like it.
     #[randomness]
-    entry fun create_cockie(user: &signer) acquires CollectionCapability, ModuleStore {
+    entry fun create_cockie(user: &signer) acquires CollectionCapability, ModuleStore, Vault {
         create_cockie_internal(user);
+    }
+
+    entry fun burn_cockie(user: &signer) acquires ModuleStore, Cockie{
+        burn_cockie_internal(user);
+    }
+
+    entry fun burn_cockie_internal(user: &signer) acquires ModuleStore, Cockie {
+        let user_address = address_of(user);
+        check_cockie_exist(user_address);
+
+        let module_store = borrow_global_mut<ModuleStore>(@cockfight);
+        let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
+        let cockie_address = vector::pop_back(&mut cockie_owner_info.cockie_addresses);
+        let Cockie {
+            live: _,
+            extend_ref: _,
+            mutator_ref: _,
+            burn_ref,
+        } = move_from<Cockie>(cockie_address);
+        token::burn(burn_ref);
+    }
+
+    entry fun buy_eggs(user: &signer, num: u64) acquires ModuleStore, Vault {
+        assert!(num > 0, EINVALID_ARGUMENT);
+        assert!(coin::balance<AptosCoin>(address_of(user)) >= num * DEFAULT_EGG_PRICE, EINSUFFICIENT_BALANCE);
+        let deposit_coin = coin::withdraw<AptosCoin>(user, num * DEFAULT_EGG_PRICE);
+        deposit_vault(deposit_coin);
+        
+        let user_address = address_of(user);
+        let module_store = borrow_global_mut<ModuleStore>(@cockfight);
+        let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
+        cockie_owner_info.eggs = cockie_owner_info.eggs + num;
     }
 
     entry fun fund_eggs(deployer: &signer, stage: u64) acquires ModuleStore {
@@ -154,9 +227,11 @@ module cockfight::game {
         })
     }
 
-    fun create_cockie_internal(user: &signer): address acquires CollectionCapability, ModuleStore {
+    fun create_cockie_internal(user: &signer): address acquires CollectionCapability, ModuleStore, Vault {
         assert!(coin::balance<AptosCoin>(address_of(user)) >= DEFAULT_COCKIE_PRICE, EINSUFFICIENT_BALANCE);
-        coin::transfer<AptosCoin>(user, @cockfight, DEFAULT_COCKIE_PRICE);
+        
+        let deposit_coin = coin::withdraw<AptosCoin>(user, DEFAULT_COCKIE_PRICE);
+        deposit_vault(deposit_coin);
 
         let uri = utf8(COCKIE_COLLECTION_URI);
         let description = utf8(COCKIE_COLLECTION_DESCRIPTION);
@@ -190,6 +265,7 @@ module cockfight::game {
         };
         move_to(token_signer_ref, cockie);
 
+        // Add Cockie to the user's Cockie collection
         let module_store = borrow_global_mut<ModuleStore>(@cockfight);
         if (table::contains(&module_store.cockie_owner, user_address)) {
             let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
@@ -197,6 +273,7 @@ module cockfight::game {
         } else {
             table::add(&mut module_store.cockie_owner, user_address, CockieOwnerInfo {
                 eggs: 0,
+                last_game_id: 0,
                 cockie_addresses: vector[cockie_address],
             });
             vector::push_back(&mut module_store.users, user_address);
@@ -234,21 +311,32 @@ module cockfight::game {
     #[randomness]
     entry fun make_random_betting(
         user: &signer,
-        ticket: u64
+        betting_eggs: u64
     ) acquires ModuleStore {        
         let user_address = address_of(user);
         check_cockie_exist(user_address);
 
         let module_store = borrow_global_mut<ModuleStore>(@cockfight);
         let cockie_owner_info = table::borrow_mut(&mut module_store.cockie_owner, user_address);
-        assert!(cockie_owner_info.eggs >= ticket, ENOT_SUFFICIENT_EGGS);
-        assert!(ticket > 0, EINVALID_TICKET);
-        cockie_owner_info.eggs = cockie_owner_info.eggs - ticket;
-
+        assert!(cockie_owner_info.eggs >= betting_eggs, ENOT_SUFFICIENT_EGGS);
+        assert!(betting_eggs > 0, EINVALID_ARGUMENT);
+        cockie_owner_info.eggs = cockie_owner_info.eggs - betting_eggs;
+        cockie_owner_info.last_game_id = module_store.game_id;
         let random_value = randomness::u64_range(0, DEFAULT_BETTING_RANGE);
-        if (random_value == 0) {
-            cockie_owner_info.eggs = cockie_owner_info.eggs + ticket * DEFAULT_BETTING_RANGE;
-        }
+        if (random_value == 0u64) {
+            cockie_owner_info.eggs = cockie_owner_info.eggs + betting_eggs * DEFAULT_BETTING_RANGE;
+            table::add(&mut module_store.game_results, module_store.game_id, true);
+        } else {
+            table::add(&mut module_store.game_results, module_store.game_id, false);
+        };
+
+        module_store.game_id = module_store.game_id + 1;
+    }
+
+    #[view]
+    public fun get_game_result(game_id: u64): (bool) acquires ModuleStore {
+        let module_store = borrow_global<ModuleStore>(@cockfight);
+        *table::borrow(&module_store.game_results, game_id)
     }
 
     // Get collection name of cockie collection
@@ -258,14 +346,15 @@ module cockfight::game {
     }
 
     #[view]
-    public fun get_cockie_owner_info(user: address): (u64, vector<address>) acquires ModuleStore {
+    public fun get_cockie_owner_info(user: address): (u64, u64, vector<address>) acquires ModuleStore {
         let module_store = borrow_global<ModuleStore>(@cockfight);
         if (!table::contains(&module_store.cockie_owner, user)) {
-            return (0, vector::empty<address>())
+            return (0, 0, vector::empty<address>())
         };
         let cockie_owner_info = table::borrow(&module_store.cockie_owner, user);
-        (cockie_owner_info.eggs, cockie_owner_info.cockie_addresses)
+        (cockie_owner_info.eggs, cockie_owner_info.last_game_id, cockie_owner_info.cockie_addresses)
     }
+
 
     // Get creator address of cockie collection
     #[view]
@@ -315,13 +404,15 @@ module cockfight::game {
         // create a fake account (only for testing purposes)
         create_account_for_test(address_of(creator));
         create_account_for_test(address_of(account));
+        create_account_for_test(get_collection_address());
 
         primary_fungible_store::deposit(address_of(creator), mint_apt_fa_for_test(DEFAULT_COCKIE_PRICE));
         primary_fungible_store::deposit(address_of(account), mint_apt_fa_for_test(DEFAULT_COCKIE_PRICE));
+        
+        init_module(account);
+
         coin::register<AptosCoin>(account);
         coin::register<AptosCoin>(creator);
-
-        init_module(account)
     }
 
     #[test(
@@ -333,18 +424,42 @@ module cockfight::game {
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires CollectionCapability, Cockie, ModuleStore {
+    ) acquires CollectionCapability, Cockie, ModuleStore, Vault {
         setup_test(fx, account, creator);
+        
         let cockie_address = create_cockie_internal(creator);
         let (live) = get_cockie(cockie_address);
         assert!(live, 1);
-        let (eggs, cockie_addresses) = get_cockie_owner_info(address_of(creator));
+        let (eggs, _, cockie_addresses) = get_cockie_owner_info(address_of(creator));
         assert!(eggs == 0, 1);
         assert!(vector::length(&cockie_addresses) == 1, 1);
 
-        let (eggs, cockie_addresses) = get_cockie_owner_info(address_of(account));
+        let (eggs, _, cockie_addresses) = get_cockie_owner_info(address_of(account));
         assert!(eggs == 0, 1);
         assert!(vector::length(&cockie_addresses) == 0, 1);
+    }
+
+    #[test(
+        fx = @aptos_framework,
+        account = @cockfight,
+        creator = @0x123
+    )]
+    fun T_buy_eggs(
+        fx: &signer,
+        account: &signer,
+        creator: &signer
+    ) acquires CollectionCapability, ModuleStore, Vault {
+        setup_test(fx, account, creator);
+        create_cockie_internal(creator);
+
+        let (eggs, _, _) = get_cockie_owner_info(address_of(creator));
+        assert!(eggs == 0, 1);
+
+        let egg_num_to_buy = 10;
+        primary_fungible_store::deposit(address_of(creator), mint_apt_fa_for_test(DEFAULT_EGG_PRICE * egg_num_to_buy));
+        buy_eggs(creator, egg_num_to_buy);
+        let (eggs, _, _) = get_cockie_owner_info(address_of(creator));
+        assert!(eggs == 10, 1);
     }
 
     #[test(
@@ -356,12 +471,30 @@ module cockfight::game {
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires CollectionCapability, ModuleStore {
+    ) acquires CollectionCapability, ModuleStore, Vault {
         setup_test(fx, account, creator);
-        
+
         create_cockie_internal(creator);
-        fund_eggs(account, 1);
+
+        let stage = 1;
+        let betting_eggs = 1;
+
+        fund_eggs(account, stage);  
+        
+        make_random_betting(creator, betting_eggs);
+        let game_result = get_game_result(1);
+        let (_, last_game_id, _) = get_cockie_owner_info(address_of(creator));
+
+        assert!(game_result == false, 1);
+        assert!(last_game_id == 1, 1);
+
+        randomness::set_seed(x"0000000000000000000000000000000000000000000000000000000000000007");
         make_random_betting(creator, 1);
+        let game_result = get_game_result(2);
+        let (_, last_game_id, _) = get_cockie_owner_info(address_of(creator));
+
+        assert!(game_result == true, 1);
+        assert!(last_game_id == 2, 1);
     }
 
     #[test(
@@ -374,7 +507,7 @@ module cockfight::game {
         fx: &signer,
         account: &signer,
         creator: &signer
-    ) acquires CollectionCapability, ModuleStore {
+    ) acquires CollectionCapability, ModuleStore, Vault {
         setup_test(fx, account, creator);
         create_cockie_internal(creator);
         create_cockie_internal(creator);

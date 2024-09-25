@@ -2,79 +2,78 @@ import React, { useState } from 'react';
 import { Card, Text, Image, Title, useMantineTheme, Space, Modal, Button, Group} from '@mantine/core';
 import RoundButton from './RoundButton';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { executeTx } from '../data/tx';
+import { COCKFIGHT_MODULE_ADDRESS } from '../lib/consts';
 
 const imageWidth = 550;
 const cardHeight = 620;
 const imageHeight = 360;
 
 const ChickenCard = (props: any ) => {
-    // const [values, setValues] = useRecoilState()
     const navigate = useNavigate()
-
-    const { title, src, priceText, text, type } = props;
-    
+    const { account, signAndSubmitTransaction } = useWallet()
+    const { title, src, priceText, text, type, isFaded } = props;
     const [opened, setOpened] = useState(false);
-    
-    // const { mutate, isPending } = useMutation({
-    //     mutationFn: async () => {
-    //         if (!address) {
-    //             alert('Please connect wallet')
-    //             return
-    //         }
-            
-    //         const metadata = computeCoinMetadata("0x1", "uinit")
-    //         const msgs = [
-    //             new MsgExecute(
-    //             address,
-    //             COCKFIGHT_MODULE_ADDRESS,
-    //             COCKFIGHT_MODULE_NAME,
-    //             "mint",
-    //             [],
-    //             [
-    //                 bcs.object().serialize(metadata).toBase64(),
-    //             ],
-    //             ),
-    //         ]
 
-    //         await requestTx({ messages: toEncodeObject(msgs) })
-            
-    //         const body = {
-    //             address,
-    //             type,
-    //             base_coin: "USDC",
-    //             decimal: 8
-    //         }
-    //         try {
-    //             const response = await axios.post(`${API_URL}/market/mint`, body);
-    //             console.log('buy response: ', response, API_URL);
-    //         } catch (error) {
-    //             console.error('buy error: ', error);
-    //         }
-
-    //         return
-    //     },
-    //     onSuccess: (response) => {
-    //       if (window.location.href.includes("confirm")) {
-    //         navigate("../main")
-    //       }
-    //     },
-    //     onError: (error) => {
-    //       showTxNotification({ type: "failed", error: error as Error })
-    //     },
-    //   })
-
-    const handleBuyNowClick = () => {
-        setOpened(true);
+    const handleClick = () => {
+        executeTx(
+            account,
+            signAndSubmitTransaction,
+            {
+                data: {
+                function: `${COCKFIGHT_MODULE_ADDRESS}::game::create_cockie`,
+                functionArguments: [],
+                }, 
+            }
+        )
     };
 
     return (
         <>
-            <Card radius={24} withBorder={false} shadow="xs" padding="md" w={imageWidth} bg="dark-grey.0" mih={500} style={{
-                flexDirection: 'column',
-                display: 'flex'
-            }}>
-                <Card.Section mt="sm" style={{}}>
+        <div style={{ position: 'relative', width: imageWidth, height: cardHeight }}>
+
+        
+            {isFaded && (
+                <div
+                    style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Dark transparent overlay
+                    zIndex: 1, // Ensure it's above the card content
+                    }}
+                >
+                    <Text
+                    size="xl"
+                    weight={700}
+                    style={{ color: 'white', fontSize: '3rem', letterSpacing: '0.1em' }}
+                    >
+                    TBA
+                    </Text>
+                </div>
+            )}
+            <Card 
+                radius={24} 
+                withBorder={false} 
+                shadow="xs" 
+                padding="md" 
+                w={imageWidth} 
+                bg="dark-grey.0" 
+                mih={500}
+                style={{
+                    flexDirection: 'column',
+                    display: 'flex',
+                    opacity: isFaded ? 0.5 : 1,  // Apply faded effect conditionally
+                    transition: 'opacity 0.3s ease',  // Optional smooth transition
+                }}
+            >
+                <Card.Section mt="sm">
                     <Image width={imageWidth} height={imageHeight} src={src}></Image>
                 </Card.Section>
                 <Card.Section  mt="0" p={20} style={{
@@ -82,21 +81,21 @@ const ChickenCard = (props: any ) => {
                     flexDirection: 'column',
                     flex: "1 0 auto",
                 }}>
-                    
-                    <Title p="0 0 10px" order={3} c={"white.0"} mb={4} style={{
-                        textAlign: "start",
-                    }}>{title}</Title>
-                    <Title size="md" c="white.0" order={4} mb={12} style={{
-                        textAlign: "start",
-                    }}>{priceText}</Title>
+                    <Title p="0 0 10px" order={3} c={"white.0"} mb={4} style={{ textAlign: "start" }}>
+                        {title}
+                    </Title>
+                    <Title size="md" c="white.0" order={4} mb={12} style={{ textAlign: "start" }}>
+                        {priceText}
+                    </Title>
                     <Text size="md" c="grey.0">{text}</Text>
-                    <Space style={{
-                        flex: "1 0 auto"
-                    }}></Space>
-                    <RoundButton text="BUY NOW" size="lg" mt={20} variant="filled" bgColor="custom-orange.1" textColor={"black"} fullWidth></RoundButton>
+                    <Space style={{ flex: "1 0 auto" }}></Space>
+                    <RoundButton 
+                        text="BUY NOW" size="lg" mt={20} variant="filled" bgColor="custom-orange.1" textColor={"black"} fullWidth 
+                        onClick={() => setOpened(true)}
+                    />
                 </Card.Section>
             </Card>
-
+            </div>
             <Modal
                 opened={opened}
                 onClose={() => setOpened(false)}
@@ -125,7 +124,7 @@ const ChickenCard = (props: any ) => {
                 <Text size="md" c="grey.0" mb={20}>Are you sure you want to buy this item?</Text>
                 <Group position="center">
                     <Button onClick={() => {
-                        // onClickButton(type);
+                        handleClick();
                         setOpened(false);
                     }}>
                         Confirm

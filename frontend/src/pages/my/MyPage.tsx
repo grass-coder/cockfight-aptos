@@ -1,84 +1,93 @@
-import { Flex, Title, Text, Tabs, Group, Stack, Center, Card, Space, Popover, Checkbox } from "@mantine/core"
-import EggCard from "../../components/EggCard"
-import * as React from "react"
+import { Flex, Title, Text, Tabs, Stack, Center, Card, Space, Popover, Checkbox } from "@mantine/core"
+import React, { useState } from "react";
 import { useStyles } from "../../styles/style"
 import RoundButton from "../../components/RoundButton"
 import FilterCheckbox from "../../components/FilterCheckbox"
 import GameCard from "../../components/GameCard"
 import HistoryComponent from "./HistoryComponent"
 
-import raceThum from "../../images/game/race/cockieSelection/cockie1.png"
+import raceThum from "../../images/game/race_thum.png"
 import lotteryThum from "../../images/game/lottery_thum.png"
 import { useWallet } from "@aptos-labs/wallet-adapter-react"
-import { TEST_APT_ADDRESS } from "../../lib/aptosClient"
 import EggRewardSection from "./EggRewardSection"
-import { getBalance } from "../../data/query"
+import { getBalance, getCockieOwnerInfo, GetCockieOwnerInfoResponse } from "../../data/query"
 import AssetSection from "./AssetSection"
+import { MoveValue } from "@aptos-labs/ts-sdk";
+import { aptos } from "../../lib/aptosClient";
 
 const assetSectionHeight = 350
 
 
 const MyPage = () => {
   const { classes } = useStyles()
-  const [eggRewardDetailDisplayed, setEggRewardDetailDisplayed] = React.useState(false)
-  const [myBalance, setMyBalance] = React.useState<number | undefined>(0)
+  const [myBalance, setMyBalance] = React.useState<number>(0)
 
   const [egg, setEgg] = React.useState(0)
   const [stableChicken, setStableChicken] = React.useState(0)
   const [volatileChicken, setVolatileChicken] = React.useState(0)
   
-  const [totalAssetValue, setTotalAssetValue] = React.useState(0)
   const [eggValue, setEggValue] = React.useState(0)
   const [stableChickenValue, setStableChickenValue] = React.useState(0)
-  const [volatileChickenValue, setVolatileChickenValue] = React.useState(0)
+
+  const [cockieOwnerInfo, setCockieOwnerInfo] = useState<GetCockieOwnerInfoResponse>();
+
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [timeUntilMidnight, setTimeUntilMidnight] = useState('');
 
   const { account } = useWallet()
 
-
   const fetchData = async () => {
     try {
-      if (account?.address) {
-        const balance = await getBalance(TEST_APT_ADDRESS, "0x1::aptos_coin::AptosCoin") ?? 0
-        console.log(balance)
-        setMyBalance(balance)
-        
-        // const accountRes = await axios.get(
-        //   `${API_URL}/user?address=${address}`,
-        // );
-        // const user: User = accountRes.data;
-        // let stable = 0;
-        // let volatile = 0;
-        // for (const cockie of user.cockies) {
-        //   if (cockie.owner !== address) continue
-        //   if (cockie.type === CockieType.STABLE) {
-        //     stable += 1;
-        //   } else if (cockie.type === CockieType.VOLATILE) {
-        //     volatile += 1;
-        //   }
-        // }
-        // setEgg(user.egg);
-        // setStableChicken(stable);
-        // setVolatileChicken(volatile);
-        
-        // const eggValue = user.egg * DUMMY_EGG_PRICE;
-        // const stableChickenValue = stable * DUMMY_STABLE_COCKIE_PRICE ;
-        // const volatileChickenValue = volatile * DUMMY_VOLATILE_COCKIE_PRICE * (1 + Math.random() * 0.1 - 0.05);
-        // const totalAssetValue = eggValue + stableChickenValue + volatileChickenValue + balance / 10 ** 6;
+      setLoading(true);
+      setError(null);
 
-
-        // setEggValue(eggValue);
-        // setStableChickenValue(stableChickenValue);
-        // setVolatileChickenValue(volatileChickenValue);
-        // setTotalAssetValue(totalAssetValue);
+      if (account == null) {
+        throw new Error("Unable to find account to sign transaction");
       }
-    } catch (error) {
-      console.error('Failed to fetch egg balance:', error);
+      const balance = await getBalance(account.address, "0x1::aptos_coin::AptosCoin");
+      setMyBalance(balance ?? 0);
+      
+      const cockieOwnerInfo = await getCockieOwnerInfo(account.address);
+      setCockieOwnerInfo(cockieOwnerInfo);
+
+      const cockieNums = cockieOwnerInfo?.cockie_addresses ? (cockieOwnerInfo.cockie_addresses as MoveValue[] ).length : 0;
+      setStableChicken(cockieNums);
+      setStableChickenValue(cockieNums * 100);
+      
+      setEgg(Number(cockieOwnerInfo?.eggs) || 0);
+      setEggValue(Number(cockieOwnerInfo?.eggs) || 0);
+      setLoading(false);
+    } catch (err) {
+      setError('Error fetching data');
+      setLoading(false);
     }
   };
 
+  const calculateTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(24, 0, 0, 0);
+    const diff = midnight.getTime() - now.getTime();
+
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+    const seconds = Math.floor((diff / 1000) % 60);
+
+    setTimeUntilMidnight(`${hours}H ${minutes}M ${seconds}S`);
+  };
+
   React.useEffect(() => {
-    fetchData()
-  }, [])
+    if (account) fetchData()
+
+    calculateTimeUntilMidnight();
+    const timer = setInterval(() => {
+      calculateTimeUntilMidnight();
+    }, 1000); 
+
+    return () => clearInterval(timer);
+  }, [account])
 
   return (
     <Stack className={classes.frameFlex} spacing={80}>
@@ -94,21 +103,14 @@ const MyPage = () => {
             alignItems: "start",
           }}
         >
-          {/* {account && (
-            <div>
-              <button onClick={faucet}>Faucet</button>
-            </div>
-          )} */}
           <Title c="black.0" order={3} mb={10}>
             YOUR TOTAL ASSET
           </Title>
           <Title c="black.0" order={2}>
-            $ {totalAssetValue.toFixed(2)}
+            {myBalance ? (myBalance / 10**8) : 0} APT
           </Title>
         </Center>
         <EggRewardSection
-          eggRewardDetailDisplayed={eggRewardDetailDisplayed}
-          setEggRewardDetailDisplayed={setEggRewardDetailDisplayed}
           egg={egg}
           eggValue={eggValue}
         />
@@ -183,18 +185,18 @@ const MyPage = () => {
       </Flex>
       <Flex direction="row" wrap="wrap" gap={16} justify="space-around">
         <GameCard
-          time="1H 25M 34S"
+          time={timeUntilMidnight}
           title="RACE"
           text={
             <span>
-              Bet amount: 100 eggs<br></br> Winning amount: 2500 eggs
+              Bet amount: 100 ~ 50000 eggs<br></br> Winning amount: 400 ~ 200000 eggs
             </span>
           }
           src={raceThum}
           gameKey="1"
         ></GameCard>
         <GameCard
-          time="1H 25M 34S"
+          time={timeUntilMidnight}
           title="LOTTERY"
           text={
             <span>

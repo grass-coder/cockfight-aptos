@@ -1,6 +1,5 @@
-import { useState } from "react"
-import { Box, Flex, Stack, Title, Text, BackgroundImage, Image } from "@mantine/core"
 import * as React from "react"
+import { Box, Flex, Stack, Title, BackgroundImage, Image } from "@mantine/core"
 import { useRecoilState } from "recoil"
 import { StyleState } from "../../states/atoms"
 import RoundButton from "../../components/RoundButton"
@@ -38,12 +37,8 @@ const MainPage = () => {
         }}
       >
         <Flex className={classes.frameFlex} h="100%" justify={"center"}>
-          {/* <Title order={1}>COCKFIGHT</Title>
-          <Title mt={20} order={3}>
-            LEVERAGE YOUR EARNINGS WITH CHICKEN AND EGGS
-          </Title> */}
           <RoundButton
-            to="/buychicken"
+            to="/cockie"
             text="GO TO BUY CHICKEN"
             size="lg"
             bgColor="orange"
@@ -112,14 +107,6 @@ const MainPage = () => {
         </Flex>
       </BackgroundImage>
       <Flex className={classes.frameFlex} pb={100}>
-        {/* <Title mt={80} mb={40} order={2} color={"white.0"}>HOW TO PLAY</Title>
-        <Flex w="100%" direction="row" justify="center" gap="20px" style={{
-          flexWrap: "wrap",
-        }}>
-          <ExplainCard title="STEP 01" text="Make sure you have USDC or ETH on a centralized exchange. (Binance, Coinbase, OKX, Kraken etc)" src={explainImg1} ></ExplainCard>
-          <ExplainCard title="STEP 02" text="Create a metamask wallet account and send USDC or ETH to your wallet address." src={explainImg2} ></ExplainCard>
-          <ExplainCard title="STEP 03" text="On cockfight site, click the button in the top-right to connect your wallet." src={explainImg3} ></ExplainCard>
-        </Flex> */}
         <Title mt={80} mb={20} order={2} color={"white.0"}>
           OUR FEATURE
         </Title>

@@ -17,6 +17,7 @@ const useStyles = createStyles((theme) => ({
 
 interface propsType {
   isOpened: boolean
+  reset: any
 }
 
 const WinModal = (props: propsType) => {
@@ -43,7 +44,7 @@ const WinModal = (props: propsType) => {
           variant="filled"
           bgColor="custom-orange.1"
           textColor={"black"}
-          to="/my"
+          onClick={props.reset}
         ></RoundButton>
       </Group>
     </Modal>

@@ -8,7 +8,7 @@ std = "0x1"
 aptos_std = "0x1"
 aptos_framework = "0x1"
 aptos_token_objects = "0x4"
-cockfight = "0xd23929f631c0ff1f0f3a152502a897c673e403c96875678f44f58f4755b9ab59"
+cockfight = "0xe039666b9ba3ad126aff3fc85b3554caec8063ae3adde9717fa3ec968e279876"
 
 [dependencies]
 AptosFramework = { git = "https://github.com/aptos-labs/aptos-core.git", rev = "testnet", subdir = "aptos-move/framework/aptos-framework"}

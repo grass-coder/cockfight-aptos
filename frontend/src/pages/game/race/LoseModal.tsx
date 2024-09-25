@@ -44,7 +44,6 @@ const LoseModal = (props: propsType) => {
           variant="filled"
           bgColor="custom-orange.1"
           textColor={"black"}
-          //   to="/game/1"
           onClick={props.reset}
         ></RoundButton>
       </Group>

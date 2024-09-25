@@ -1,17 +1,16 @@
-import { Container } from "@mantine/core"
 import { useParams } from "react-router-dom"
 import React from "react"
 
 import HorseRace from "./race/HorseRace"
 import Lottery from "./Lottery/Lottery"
 
-const GameDetailsPage = () => {
-  const { gameId } = useParams()
-
+const GameDetailsPage:React.FC = () => {
+  const { id } = useParams<{ id: string }>();
+  console.log(id)
   return (
     <>
-      {gameId === "1" && <HorseRace />}
-      {gameId === "2" && <Lottery />}
+      {id === "1" && <HorseRace />}
+      {id === "2" && <Lottery />}
     </>
   )
 }

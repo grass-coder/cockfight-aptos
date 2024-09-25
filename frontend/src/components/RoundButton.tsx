@@ -12,7 +12,7 @@ import { Button } from "@mantine/core"
  *     @param onclick function
  * @returns
  */
-const RoundButton = (props) => {
+const RoundButton = (props:any) => {
   const { to, text, size, bgColor, textColor, variant, onClick, mt, mb, fullWidth, w, disabled } = props
   const returnButton = () => {
     return (
@@ -24,10 +24,7 @@ const RoundButton = (props) => {
         mt={mt}
         color={textColor}
         bg={variant === "gradient" ? "" : variant === "filled" ? bgColor : "transparent"}
-        align="center"
-        justify="center"
         variant={variant}
-        gradient={variant === "gradient" ? { from: "#FF9D2B", to: "#FF4802", deg: 30 } : null}
         radius={"32px"}
         size={size}
         m={fullWidth ? 0 : "unset"}

@@ -8,10 +8,7 @@ import {StyleState} from '../states/atoms'
 
 
 const App = () => {
-  const { pathname } = useLocation()
-  const isHome = pathname === "/";
   const [headerHeight, setheaderHeight] = useRecoilState(StyleState)
-
   return (
     <AppShell
       padding="0px"
