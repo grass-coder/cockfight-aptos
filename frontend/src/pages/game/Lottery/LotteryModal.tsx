@@ -71,7 +71,7 @@ const LotteryModal: React.FC<LotteryModalProps> = ({ opened, onClose, customOran
       }}
     >
       {renderTickets()}
-      <Button
+      {/* <Button
         fullWidth
         style={{
           backgroundColor: customOrange[0],
@@ -92,7 +92,10 @@ const LotteryModal: React.FC<LotteryModalProps> = ({ opened, onClose, customOran
         onClick={makeRandom} // 랜덤화 버튼 클릭 시 makeRandom 함수 호출
       >
         Randomize
-      </Button>
+      </Button> */}
+      <Text>
+        This will be released soon! <br></br> Please wait for the next update.
+      </Text>
       <Button variant="subtle" fullWidth style={{ color: customOrange[0] }} onClick={onClose}>
         Go back
       </Button>

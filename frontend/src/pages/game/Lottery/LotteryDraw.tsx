@@ -27,7 +27,7 @@ const LotteryDraw = () => {
   const [userBuyingTickets, setUserBuyingTickets] = useState<number>(0)
   const [userPayingEggs, setUserPayingEggs] = useState<number>(0)
   const [costEgg, setCostEgg] = useState<number>(0) // New state for cost
-  const [modalOpened, setModalOpened] = useState<boolean>(false) // State for modal
+  const [modalOpened, setModalOpened] = useState<boolean>(true) // State for modal
 
   useEffect(() => {
     const updateSize = () => {
