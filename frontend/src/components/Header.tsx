@@ -43,7 +43,6 @@ const FaucetButton: React.FC<FaucetButtonProps> = ({ account, requestFaucet }) =
       <></>
     ) : (
       <RoundButton
-        to="/"
         text="Faucet"
         size="lg"
         variant="outline"
@@ -88,11 +87,13 @@ const CustomHeader: React.FC<CustomHeaderProps> = ({ height }) => {
 
   const [errorModalOpen, setErrorModalOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [successModalOpen, setSuccessModalOpen] = useState(false);
 
   const requestFaucet = async () => {
     if (!account?.address) return;
     try {
       await aptos.fundAccount({ accountAddress: account.address, amount: 100_000_000 });
+      setSuccessModalOpen(true);
     } catch (error: any) {
       setErrorMessage(error.message || 'Faucet request failed.');
       setErrorModalOpen(true);
@@ -108,6 +109,14 @@ const CustomHeader: React.FC<CustomHeaderProps> = ({ height }) => {
           <WalletButton account={account} connect={connect} disconnect={disconnect} />
         </Flex>
       </Header>
+
+      <Modal
+        opened={successModalOpen}
+        onClose={() => setSuccessModalOpen(false)}
+        title="Success"
+      >
+        <p>Faucet Funding was successful!</p>
+      </Modal>
 
       <Modal
         opened={errorModalOpen}
