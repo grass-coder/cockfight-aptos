@@ -9,16 +9,16 @@ import usdt from "../../images/token/USDT.png"
 import usdc from "../../images/token/USDC.png"
 import eth from "../../images/token/ETH.png"
 import tia from "../../images/token/TIA.png"
-import sui from "../../images/token/SUI.png"
+import aptos from "../../images/token/APTOS.png"
 import { CockieType } from "../../lib/consts"
 
 
 const eggData = [
-  { eggStr: "USDC", eggIconSrc: usdc, eggKey: "USDC", eggDiff: "0.4", tv: "$5922.49", hp: "$0.15", lp: "$0.13" },
-  { eggStr: "ETH", eggIconSrc: eth, eggKey: "ETH", eggDiff: "2.5", tv: "$1294.62", hp: "$4.13", lp: "$2.13" },
-  { eggStr: "SUI", eggIconSrc: sui, eggKey: "SUI", eggDiff: "3.7", tv: "$9892.19", hp: "$8.23", lp: "$5.32" },
-  { eggStr: "USDT", eggIconSrc: usdt, eggKey: "USDT", eggDiff: "0.5", tv: "$6322.23", hp: "$0.16", lp: "$0.13" },
-  { eggStr: "TIA", eggIconSrc: tia, eggKey: "TIA", eggDiff: "4.2", tv: "$3021.59", hp: "$2.14", lp: "$1.23" }
+  { eggStr: "APTOS", eggIconSrc: aptos, eggKey: "APTOS", eggDiff: "19.5", tv: "$9892.19", hp: "$8.23", lp: "$5.32" },
+  { eggStr: "USDC", eggIconSrc: usdc, eggKey: "USDC", eggDiff: "10.2", tv: "$5922.49", hp: "$0.15", lp: "$0.13" },
+  { eggStr: "ETH", eggIconSrc: eth, eggKey: "ETH", eggDiff: "12.5", tv: "$1294.62", hp: "$4.13", lp: "$2.13" },
+  { eggStr: "USDT", eggIconSrc: usdt, eggKey: "USDT", eggDiff: "15.5", tv: "$6322.23", hp: "$0.16", lp: "$0.13" },
+  // { eggStr: "TIA", eggIconSrc: tia, eggKey: "TIA", eggDiff: "14.2", tv: "$3021.59", hp: "$2.14", lp: "$1.23" }
 ];
 
 const MarketPage = () => {

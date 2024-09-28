@@ -10,19 +10,11 @@ import { CockieType } from "../../lib/consts"
 const chickenData = [
   {
     title: "STABLE COCKIE",
-    priceText: "1000 USDC",
-    text: "APY 6% | Defi protocol",
+    priceText: "0.001 APT",
+    text: "APY 19.2% | Defi protocol",
     src: stable_chicken_thum,
     type: CockieType.STABLE,
     isFaded: false,
-  },
-  {
-    title: "VOLATILE COCKIE",
-    priceText: "0.1 ETH",
-    text: "APY 7.3% | Defi protocol",
-    src: volatile_chicken_thum,
-    type: CockieType.VOLATILE,
-    isFaded: true, 
   },
 ];
 
