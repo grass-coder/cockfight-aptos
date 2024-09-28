@@ -25,3 +25,4 @@ export enum CockieType {
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://api.cockfight.shop'
 export const NODIT_ENABLED = import.meta.env.VITE_NODIT_ENABLED === 'true'
+export const NODIT_API_KEY = import.meta.env.VITE_NODIT_API_KEY || ''
